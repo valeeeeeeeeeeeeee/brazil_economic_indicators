@@ -5,6 +5,7 @@ Data: IPCA (inflation), Selic (interest rate) and Dollar (exchange rate) via BCB
 
 import requests
 import pandas as pd
+import numpy as np
 from datetime import datetime
 import urllib3
 import plotly.graph_objects as go
@@ -74,7 +75,25 @@ print("\nAverage Selic rate by year:")
 print(selic_avg.to_string())
 
 # ─────────────────────────────────────────────
-# 4. COMPUTE SELIC CUMULATIVE RATE
+# 4. COMPUTE DOLLAR & IPCA MIN / MAX STATS
+#    These are scalar values repeated across every row so Plotly can
+#    embed them in customdata and display them on every hover point.
+# ─────────────────────────────────────────────
+
+# Dollar
+dolar_max_val  = dolar["Dollar"].max()
+dolar_max_date = dolar.loc[dolar["Dollar"].idxmax(), "date"].strftime("%m/%d/%Y")
+dolar_min_val  = dolar["Dollar"].min()
+dolar_min_date = dolar.loc[dolar["Dollar"].idxmin(), "date"].strftime("%m/%d/%Y")
+
+# IPCA
+ipca_max_val   = ipca["IPCA"].max()
+ipca_max_date  = ipca.loc[ipca["IPCA"].idxmax(), "date"].strftime("%m/%d/%Y")
+ipca_min_val   = ipca["IPCA"].min()
+ipca_min_date  = ipca.loc[ipca["IPCA"].idxmin(), "date"].strftime("%m/%d/%Y")
+
+# ─────────────────────────────────────────────
+# 5. COMPUTE SELIC CUMULATIVE RATE
 #    Uses compound formula: (1 + r/100) multiplied across all periods,
 #    then converted back to percentage.  Reset is per calendar year so
 #    the tooltip always shows the year-to-date accumulated figure.
@@ -87,7 +106,7 @@ selic["Selic_Cumulative"] = (
 )
 
 # ─────────────────────────────────────────────
-# 5. INTERACTIVE CHARTS WITH PLOTLY
+# 6. INTERACTIVE CHARTS WITH PLOTLY
 # ─────────────────────────────────────────────
 
 print("\nGenerating interactive chart...")
@@ -106,13 +125,27 @@ fig = make_subplots(
 hover_template = "<b>Date:</b> %{x|%m/%d/%Y}<br><b>Value:</b> %{y:.2f}"
 
 # --- Chart 1: IPCA ---
+# customdata columns: [max_val, max_date, min_val, min_date]
+ipca_customdata = np.column_stack([
+    np.full(len(ipca), ipca_max_val),
+    np.full(len(ipca), ipca_max_date),
+    np.full(len(ipca), ipca_min_val),
+    np.full(len(ipca), ipca_min_date),
+])
 fig.add_trace(
     go.Scatter(
         x=ipca["date"], y=ipca["IPCA"],
         mode="lines", name="IPCA",
         line=dict(color="tomato", width=2),
         fill="tozeroy", fillcolor="rgba(255, 99, 71, 0.15)",
-        hovertemplate=hover_template + "%<extra></extra>"
+        customdata=ipca_customdata,
+        hovertemplate=(
+            "<b>Date:</b> %{x|%m/%d/%Y}<br>"
+            "<b>Value:</b> %{y:.2f}%<br>"
+            "<b>All-time High:</b> %{customdata[0]:.2f}% on %{customdata[1]}<br>"
+            "<b>All-time Low:</b> %{customdata[2]:.2f}% on %{customdata[3]}"
+            "<extra></extra>"
+        )
     ),
     row=1, col=1
 )
@@ -139,15 +172,25 @@ fig.add_trace(
 )
 
 # --- Chart 3: Dollar ---
+# customdata columns: [max_val, max_date, min_val, min_date]
+dolar_customdata = np.column_stack([
+    np.full(len(dolar), dolar_max_val),
+    np.full(len(dolar), dolar_max_date),
+    np.full(len(dolar), dolar_min_val),
+    np.full(len(dolar), dolar_min_date),
+])
 fig.add_trace(
     go.Scatter(
         x=dolar["date"], y=dolar["Dollar"],
         mode="lines", name="Dollar",
         line=dict(color="seagreen", width=2),
         fill="tozeroy", fillcolor="rgba(46, 139, 87, 0.15)",
+        customdata=dolar_customdata,
         hovertemplate=(
             "<b>Date:</b> %{x|%m/%d/%Y}<br>"
-            "<b>Value:</b> R$ %{y:.2f}"
+            "<b>Value:</b> R$ %{y:.2f}<br>"
+            "<b>All-time High:</b> R$ %{customdata[0]:.2f} on %{customdata[1]}<br>"
+            "<b>All-time Low:</b> R$ %{customdata[2]:.2f} on %{customdata[3]}"
             "<extra></extra>"
         )
     ),
