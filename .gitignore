@@ -13,3 +13,7 @@ Thumbs.db
 # IDEs
 .vscode/
 .idea/
+
+# Generated files
+brazil_indicators_interactive.html
+imagens/indicadores.png

@@ -61,7 +61,7 @@ brazil-economic-indicators/
 
 **1. Clone the repository**
 ```bash
-git clone https://github.com/your-username/brazil-economic-indicators.git
+git clone https://github.com/valeeeeeeeeeeeeee/brazil-economic-indicators.git
 cd brazil-economic-indicators
 ```
 
