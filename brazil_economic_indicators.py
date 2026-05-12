@@ -220,4 +220,5 @@ fig.write_html(output_html)
 print(f"Interactive chart saved as '{output_html}'")
 
 # Open automatically in the default browser
+fig.write_image("imagens/indicadores.png", width=1400, height=900, scale=2)
 fig.show()
