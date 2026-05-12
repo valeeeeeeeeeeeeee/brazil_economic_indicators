@@ -1,10 +1,10 @@
-# 🇧🇷 Brazil Economic Indicators
+#  Brazil Economic Indicators
 
 Interactive visualization of Brazil's key macroeconomic indicators — IPCA, Selic and Dollar exchange rate — sourced directly from the **Central Bank of Brazil (BCB) public API**, with no authentication required.
 
 ---
 
-## 📊 Preview
+##  Preview
 
 > Three synchronized interactive charts rendered in your browser, with rich hover tooltips showing current value, all-time highs/lows, and YTD accumulated rates.
 
@@ -12,7 +12,7 @@ Interactive visualization of Brazil's key macroeconomic indicators — IPCA, Sel
 
 ---
 
-## 📈 Indicators
+##  Indicators
 
 | Indicator | BCB Code | Description |
 |-----------|----------|-------------|
@@ -27,7 +27,7 @@ https://api.bcb.gov.br/dados/serie/bcdata.sgs.{CODE}/dados?formato=json
 
 ---
 
-## ✨ Features
+##  Features
 
 - **Live data** — pulls directly from the BCB API at every run, no manual downloads needed
 - **Interactive charts** — built with Plotly; zoom, pan and hover across all three charts simultaneously thanks to a shared X axis
@@ -43,7 +43,7 @@ https://api.bcb.gov.br/dados/serie/bcdata.sgs.{CODE}/dados?formato=json
 
 ---
 
-## 🗂️ Project Structure
+##  Project Structure
 
 ```
 brazil-economic-indicators/
@@ -57,7 +57,7 @@ brazil-economic-indicators/
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 **1. Clone the repository**
 ```bash
@@ -79,7 +79,7 @@ The chart will open automatically in your default browser, and an HTML file will
 
 ---
 
-## 🔧 Requirements
+##  Requirements
 
 - Python 3.8+
 - Internet connection (to reach the BCB API)
@@ -88,7 +88,7 @@ Dependencies are intentionally minimal — no API key, no sign-up, no local data
 
 ---
 
-## 💡 How It Works
+##  How It Works
 
 ### Fetching data
 The `fetch_series()` function builds the BCB API URL from a series code, requests the JSON payload, and returns a clean pandas DataFrame with typed `date` and value columns.
@@ -108,7 +108,7 @@ Because Plotly's hover system is point-indexed, global stats (all-time high/low)
 
 ---
 
-## 🧠 Skills Demonstrated
+##  Skills Demonstrated
 
 - Consuming a real public REST API without third-party wrappers
 - Data cleaning and type coercion with **pandas**
@@ -119,6 +119,6 @@ Because Plotly's hover system is point-indexed, global stats (all-time high/low)
 
 ---
 
-## 📄 License
+##  License
 
 MIT — feel free to use, adapt and share.
