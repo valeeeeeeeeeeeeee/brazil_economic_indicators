@@ -76,17 +76,13 @@ print(selic_avg.to_string())
 
 # ─────────────────────────────────────────────
 # 4. COMPUTE DOLLAR & IPCA MIN / MAX STATS
-#    These are scalar values repeated across every row so Plotly can
-#    embed them in customdata and display them on every hover point.
 # ─────────────────────────────────────────────
 
-# Dollar
 dolar_max_val  = dolar["Dollar"].max()
 dolar_max_date = dolar.loc[dolar["Dollar"].idxmax(), "date"].strftime("%m/%d/%Y")
 dolar_min_val  = dolar["Dollar"].min()
 dolar_min_date = dolar.loc[dolar["Dollar"].idxmin(), "date"].strftime("%m/%d/%Y")
 
-# IPCA
 ipca_max_val   = ipca["IPCA"].max()
 ipca_max_date  = ipca.loc[ipca["IPCA"].idxmax(), "date"].strftime("%m/%d/%Y")
 ipca_min_val   = ipca["IPCA"].min()
@@ -94,9 +90,6 @@ ipca_min_date  = ipca.loc[ipca["IPCA"].idxmin(), "date"].strftime("%m/%d/%Y")
 
 # ─────────────────────────────────────────────
 # 5. COMPUTE SELIC CUMULATIVE RATE
-#    Uses compound formula: (1 + r/100) multiplied across all periods,
-#    then converted back to percentage.  Reset is per calendar year so
-#    the tooltip always shows the year-to-date accumulated figure.
 # ─────────────────────────────────────────────
 
 selic = selic.sort_values("date").reset_index(drop=True)
@@ -106,26 +99,82 @@ selic["Selic_Cumulative"] = (
 )
 
 # ─────────────────────────────────────────────
-# 6. INTERACTIVE CHARTS WITH PLOTLY
+# 6. IPCA ACCUMULATED OVER 12 MONTHS (rolling compound)
+#    Each point answers: "What was the total inflation over the
+#    past 12 months?"  Uses compound formula: ∏(1 + r_i/100) - 1.
+#    The BCB uses exactly this to assess the inflation target.
+# ─────────────────────────────────────────────
+
+ipca = ipca.sort_values("date").reset_index(drop=True)
+
+ipca["IPCA_12m"] = (
+    (1 + ipca["IPCA"] / 100)
+    .rolling(window=12, min_periods=12)
+    .apply(lambda x: (x.prod() - 1) * 100, raw=True)
+)
+
+ipca_12m_valid    = ipca.dropna(subset=["IPCA_12m"])
+ipca_12m_max_val  = ipca["IPCA_12m"].max()
+ipca_12m_max_date = ipca.loc[ipca["IPCA_12m"].idxmax(), "date"].strftime("%m/%d/%Y")
+ipca_12m_min_val  = ipca["IPCA_12m"].min()
+ipca_12m_min_date = ipca.loc[ipca["IPCA_12m"].idxmin(), "date"].strftime("%m/%d/%Y")
+
+print(f"\nIPCA 12-month peak: {ipca_12m_max_val:.2f}% on {ipca_12m_max_date}")
+print(f"IPCA 12-month low:  {ipca_12m_min_val:.2f}% on {ipca_12m_min_date}")
+
+# ─────────────────────────────────────────────
+# 7. CORRELATION MATRIX
+#    Merge all three series by month (inner join) and compute
+#    pairwise Pearson correlations.
+# ─────────────────────────────────────────────
+
+dolar_monthly = (
+    dolar.set_index("date")["Dollar"]
+    .resample("ME")
+    .last()
+    .reset_index()
+)
+dolar_monthly.columns = ["date", "Dollar"]
+
+for df in [ipca, selic, dolar_monthly]:
+    df["month"] = df["date"].dt.to_period("M")
+
+merged = (
+    ipca[["month", "IPCA"]]
+    .merge(selic[["month", "Selic"]], on="month", how="inner")
+    .merge(dolar_monthly[["month", "Dollar"]], on="month", how="inner")
+)
+
+corr = merged[["IPCA", "Selic", "Dollar"]].corr()
+
+print("\nCorrelation matrix:")
+print(corr.round(3).to_string())
+
+# ─────────────────────────────────────────────
+# 8. INTERACTIVE CHARTS WITH PLOTLY
+#    Layout — 4 rows:
+#      Row 1 — IPCA monthly + IPCA 12-month accumulated (overlay)
+#      Row 2 — Selic
+#      Row 3 — Dollar
+#      Row 4 — Correlation view: Z-score normalized, toggle via legend
 # ─────────────────────────────────────────────
 
 print("\nGenerating interactive chart...")
 
 fig = make_subplots(
-    rows=3, cols=1,
-    shared_xaxes=True,          # Syncs zoom on the X axis across all 3 charts
-    vertical_spacing=0.08,
+    rows=4, cols=1,
+    shared_xaxes=False,
+    vertical_spacing=0.12,
     subplot_titles=(
-        "IPCA — Monthly Inflation (%)",
+        "IPCA — Monthly Inflation (%) & 12-Month Accumulated",
         "Selic Rate (%)",
-        "Exchange Rate — Dollar (BRL)"
-    )
+        "Exchange Rate — Dollar (BRL)",
+        "Correlation View — Normalized Series  ·  click legend to toggle"
+    ),
+    row_heights=[0.27, 0.23, 0.23, 0.27]
 )
 
-hover_template = "<b>Date:</b> %{x|%m/%d/%Y}<br><b>Value:</b> %{y:.2f}"
-
-# --- Chart 1: IPCA ---
-# customdata columns: [max_val, max_date, min_val, min_date]
+# ── Row 1a: IPCA monthly ─────────────────────────────────────────────
 ipca_customdata = np.column_stack([
     np.full(len(ipca), ipca_max_val),
     np.full(len(ipca), ipca_max_date),
@@ -135,13 +184,13 @@ ipca_customdata = np.column_stack([
 fig.add_trace(
     go.Scatter(
         x=ipca["date"], y=ipca["IPCA"],
-        mode="lines", name="IPCA",
-        line=dict(color="tomato", width=2),
-        fill="tozeroy", fillcolor="rgba(255, 99, 71, 0.15)",
+        mode="lines", name="IPCA Monthly",
+        line=dict(color="tomato", width=1.5),
+        fill="tozeroy", fillcolor="rgba(255, 99, 71, 0.10)",
         customdata=ipca_customdata,
         hovertemplate=(
             "<b>Date:</b> %{x|%m/%d/%Y}<br>"
-            "<b>Value:</b> %{y:.2f}%<br>"
+            "<b>Monthly:</b> %{y:.2f}%<br>"
             "<b>All-time High:</b> %{customdata[0]:.2f}% on %{customdata[1]}<br>"
             "<b>All-time Low:</b> %{customdata[2]:.2f}% on %{customdata[3]}"
             "<extra></extra>"
@@ -149,11 +198,45 @@ fig.add_trace(
     ),
     row=1, col=1
 )
-# Zero reference line on IPCA
-fig.add_hline(y=0, line_dash="dash", line_color="black", line_width=1, opacity=0.5, row=1, col=1)
 
-# --- Chart 2: Selic ---
-# customdata carries the cumulative rate so we can show it in the hover tooltip
+# ── Row 1b: IPCA 12-month accumulated (overlay) ──────────────────────
+ipca_12m_custom = np.column_stack([
+    np.full(len(ipca_12m_valid), ipca_12m_max_val),
+    np.full(len(ipca_12m_valid), ipca_12m_max_date),
+    np.full(len(ipca_12m_valid), ipca_12m_min_val),
+    np.full(len(ipca_12m_valid), ipca_12m_min_date),
+])
+fig.add_trace(
+    go.Scatter(
+        x=ipca_12m_valid["date"], y=ipca_12m_valid["IPCA_12m"],
+        mode="lines", name="IPCA 12m Accum.",
+        line=dict(color="#8B0000", width=2.5, dash="dot"),
+        customdata=ipca_12m_custom,
+        hovertemplate=(
+            "<b>12m Accumulated:</b> %{y:.2f}%<br>"
+            "<b>12m Peak:</b> %{customdata[0]:.2f}% on %{customdata[1]}<br>"
+            "<b>12m Low:</b> %{customdata[2]:.2f}% on %{customdata[3]}"
+            "<extra></extra>"
+        )
+    ),
+    row=1, col=1
+)
+
+# BCB inflation target band (3.0 % ± 1.5 pp = 1.5 %–4.5 %)
+# Shaded in green so the viewer instantly sees when inflation was on target
+fig.add_hrect(
+    y0=1.5, y1=4.5,
+    fillcolor="rgba(0,180,0,0.07)", line_width=0,
+    annotation_text="BCB target band",
+    annotation_position="top right",
+    annotation_font_size=10,
+    annotation_font_color="green",
+    row=1, col=1
+)
+fig.add_hline(y=0, line_dash="dash", line_color="black",
+              line_width=0.8, opacity=0.4, row=1, col=1)
+
+# ── Row 2: Selic ─────────────────────────────────────────────────────
 fig.add_trace(
     go.Scatter(
         x=selic["date"], y=selic["Selic"],
@@ -171,8 +254,7 @@ fig.add_trace(
     row=2, col=1
 )
 
-# --- Chart 3: Dollar ---
-# customdata columns: [max_val, max_date, min_val, min_date]
+# ── Row 3: Dollar ─────────────────────────────────────────────────────
 dolar_customdata = np.column_stack([
     np.full(len(dolar), dolar_max_val),
     np.full(len(dolar), dolar_max_date),
@@ -197,28 +279,221 @@ fig.add_trace(
     row=3, col=1
 )
 
-# --- General Layout ---
+# ── Row 4: Correlation view — Z-score normalized series ───────────────
+# Z-score normalization ((x - mean) / std) puts all three on one axis.
+# The user can click any legend item to hide/show that variable.
+
+def zscore(s):
+    return (s - s.mean()) / s.std()
+
+merged_sorted = merged.sort_values("month").copy()
+dates_corr    = merged_sorted["month"].dt.to_timestamp()
+
+fig.add_trace(
+    go.Scatter(
+        x=dates_corr, y=zscore(merged_sorted["IPCA"]),
+        mode="lines", name="IPCA (norm.)",
+        line=dict(color="tomato", width=2),
+        hovertemplate="<b>IPCA (z-score):</b> %{y:.2f}<extra></extra>"
+    ),
+    row=4, col=1
+)
+fig.add_trace(
+    go.Scatter(
+        x=dates_corr, y=zscore(merged_sorted["Selic"]),
+        mode="lines", name="Selic (norm.)",
+        line=dict(color="steelblue", width=2),
+        hovertemplate="<b>Selic (z-score):</b> %{y:.2f}<extra></extra>"
+    ),
+    row=4, col=1
+)
+fig.add_trace(
+    go.Scatter(
+        x=dates_corr, y=zscore(merged_sorted["Dollar"]),
+        mode="lines", name="Dollar (norm.)",
+        line=dict(color="seagreen", width=2),
+        hovertemplate="<b>Dollar (z-score):</b> %{y:.2f}<extra></extra>"
+    ),
+    row=4, col=1
+)
+fig.add_hline(y=0, line_dash="dash", line_color="grey",
+              line_width=0.8, opacity=0.5, row=4, col=1)
+
+# Pearson r annotations — embedded directly on the chart
+r_ipca_selic   = corr.loc["IPCA",  "Selic"]
+r_ipca_dollar  = corr.loc["IPCA",  "Dollar"]
+r_selic_dollar = corr.loc["Selic", "Dollar"]
+
+fig.add_annotation(
+    text=(
+        f"r(IPCA × Selic) = {r_ipca_selic:.2f}   "
+        f"r(IPCA × Dollar) = {r_ipca_dollar:.2f}   "
+        f"r(Selic × Dollar) = {r_selic_dollar:.2f}"
+    ),
+    xref="paper", yref="paper",
+    x=0.01, y=0.01,
+    showarrow=False,
+    font=dict(size=11, color="#444"),
+    bgcolor="rgba(255,255,255,0.80)",
+    bordercolor="#ccc",
+    borderwidth=1,
+    xanchor="left", yanchor="bottom"
+)
+
+# ── General layout ────────────────────────────────────────────────────
 fig.update_layout(
     title=dict(
         text="Brazil Economic Indicators (2017 – present)",
         font=dict(size=20),
-        x=0.5                   # Center the title
+        x=0.5
     ),
-    height=900,
-    showlegend=False,
-    hovermode="x unified",      # Vertical crosshair aligned across all subplots
+    height=1350,
+    showlegend=True,
+    legend=dict(
+        orientation="h",
+        yanchor="bottom", y=1.01,
+        xanchor="right",  x=1,
+        font=dict(size=12),
+    ),
+    hovermode="x unified",
     plot_bgcolor="white"
 )
 
-# Grid lines
-fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="rgba(200, 200, 200, 0.3)")
-fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="rgba(200, 200, 200, 0.3)")
+fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.3)")
+fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.3)")
 
-# Save as HTML (open in any browser)
-output_html = "brazil_indicators_interactive.html"
-fig.write_html(output_html)
-print(f"Interactive chart saved as '{output_html}'")
+# ── Export with injected per-chart range filters ──────────────────────
+# Plotly's native rangeselector always attaches to the top-left of the
+# entire figure, ignoring subplot position.  The reliable fix is to
+# inject plain HTML buttons after the chart is rendered and wire them
+# to Plotly.relayout() via JavaScript.
+#
+# Strategy:
+#   1. Render the figure normally (no rangeselector on any axis).
+#   2. Inject a <script> block that:
+#        a. Reads the subplot bounding boxes from the live layout.
+#        b. Creates a <div> of buttons for each subplot.
+#        c. Positions each <div> directly below its subplot's x-axis.
+#        d. On click, calls Plotly.relayout() targeting only that subplot's
+#           xaxis (xaxis, xaxis2, xaxis3, xaxis4).
 
-# Open automatically in the default browser
-fig.write_image("imagens/indicadores.png", width=1400, height=900, scale=2)
+POST_SCRIPT = """
+(function() {
+  // Map subplot row → Plotly xaxis key
+  var axisKeys = ['xaxis', 'xaxis2', 'xaxis3', 'xaxis4'];
+  var labels   = ['1Y', '3Y', '5Y', 'All'];
+  var years    = [1, 3, 5, null];   // null = show all
+
+  var gd = document.querySelector('.plotly-graph-div');
+
+  function buildFilters() {
+    // Remove any previously injected bars (e.g. on window resize)
+    document.querySelectorAll('.custom-range-bar').forEach(function(el) {
+      el.remove();
+    });
+
+    var layout = gd._fullLayout;
+    var wrapper = gd.parentElement;
+    var wrapperRect = wrapper.getBoundingClientRect();
+    var gdRect     = gd.getBoundingClientRect();
+
+    axisKeys.forEach(function(axKey, idx) {
+      var ax = layout[axKey];
+      if (!ax || ax.domain === undefined) return;
+
+      // domain is [0..1] fraction of the plot area height
+      // _offset and _length are pixel values within the SVG
+      var plotTop    = layout._margin.t;
+      var plotHeight = layout.height - layout._margin.t - layout._margin.b;
+      var domainBottom = ax.domain[0];   // lower fraction = closer to bottom
+
+      // pixel y of the bottom of this subplot's x-axis, relative to the <div>
+      var yPx = plotTop + plotHeight * (1 - domainBottom) + 6;
+
+      // x boundaries of the plot area
+      var xLeft  = layout._margin.l;
+      var xRight = layout.width - layout._margin.r;
+
+      var bar = document.createElement('div');
+      bar.className = 'custom-range-bar';
+      bar.style.cssText = [
+        'position:absolute',
+        'display:flex',
+        'gap:4px',
+        'top:'  + yPx  + 'px',
+        'left:' + xLeft + 'px',
+        'z-index:10',
+      ].join(';');
+
+      var activeBtn = null;
+
+      labels.forEach(function(label, i) {
+        var btn = document.createElement('button');
+        btn.textContent = label;
+        btn.style.cssText = [
+          'padding:2px 10px',
+          'font-size:11px',
+          'font-family:sans-serif',
+          'background:white',
+          'border:1px solid #ccc',
+          'border-radius:3px',
+          'cursor:pointer',
+          'color:#444',
+          'transition:background 0.15s',
+        ].join(';');
+
+        btn.addEventListener('mouseenter', function() {
+          if (btn !== activeBtn) btn.style.background = '#f0f0f0';
+        });
+        btn.addEventListener('mouseleave', function() {
+          if (btn !== activeBtn) btn.style.background = 'white';
+        });
+
+        btn.addEventListener('click', function() {
+          // Reset all buttons in this bar
+          bar.querySelectorAll('button').forEach(function(b) {
+            b.style.background = 'white';
+            b.style.fontWeight = 'normal';
+            b.style.borderColor = '#ccc';
+          });
+          btn.style.background   = 'rgba(70,130,180,0.18)';
+          btn.style.fontWeight   = '600';
+          btn.style.borderColor  = 'steelblue';
+          activeBtn = btn;
+
+          var update = {};
+          if (years[i] === null) {
+            update[axKey + '.autorange'] = true;
+            update[axKey + '.range']     = undefined;
+          } else {
+            var now   = new Date();
+            var start = new Date(now.getFullYear() - years[i],
+                                 now.getMonth(), now.getDate());
+            update[axKey + '.range']     = [start.toISOString(), now.toISOString()];
+            update[axKey + '.autorange'] = false;
+          }
+          Plotly.relayout(gd, update);
+        });
+
+        bar.appendChild(btn);
+      });
+
+      gd.parentElement.style.position = 'relative';
+      gd.parentElement.appendChild(bar);
+    });
+  }
+
+  // Build after Plotly finishes rendering
+  gd.on('plotly_afterplot', function() { buildFilters(); });
+  // Rebuild on resize so positions stay correct
+  window.addEventListener('resize', function() { buildFilters(); });
+  // Initial build (in case afterplot already fired)
+  if (gd._fullLayout) buildFilters();
+})();
+"""
+
+from pathlib import Path
+output_html = Path(__file__).parent / "brazil_indicators_interactive.html"
+fig.write_html(output_html, post_script=POST_SCRIPT)
+print(f"\nInteractive chart saved as '{output_html}'")
 fig.show()
